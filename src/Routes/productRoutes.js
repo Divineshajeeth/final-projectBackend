@@ -67,7 +67,7 @@ router.route("/")
   .post(protect, admin, upload.single('image'), createProduct);
 
 router.route("/:id")
-  .put(protect, admin, updateProduct)
+  .put(protect, admin, upload.single('image'), updateProduct)
   .delete(protect, admin, deleteProduct);
 
 export default router;

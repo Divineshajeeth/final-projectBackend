@@ -64,19 +64,35 @@ export const createProduct = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 export const updateProduct = asyncHandler(async (req, res) => {
-  const { name, description, price, size } = req.body;
+  const { name, description, price, size, unit } = req.body;
+  
+  console.log("=== UPDATE PRODUCT ===");
+  console.log("Product ID:", req.params.id);
+  console.log("Request body:", { name, description, price, size, unit });
+  console.log("File uploaded:", req.file ? req.file.filename : 'No file');
 
   const product = await Product.findById(req.params.id);
 
   if (product) {
+    // Update basic fields
     product.name = name || product.name;
     product.description = description || product.description;
     product.price = price || product.price;
-    product.size = size || product.size;
+    
+    // Handle both size and unit fields for backward compatibility
+    if (size !== undefined) product.size = size;
+    if (unit !== undefined) product.unit = unit;
+    
+    // Handle image update
+    if (req.file) {
+      product.image = `/uploads/products/${req.file.filename}`;
+    }
 
     const updatedProduct = await product.save();
+    console.log("✅ Product updated successfully:", updatedProduct._id);
     res.json(updatedProduct);
   } else {
+    console.log("❌ Product not found:", req.params.id);
     res.status(404);
     throw new Error("Product not found");
   }

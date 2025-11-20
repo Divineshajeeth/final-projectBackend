@@ -49,6 +49,52 @@ export const requestPasswordReset = async (req, res) => {
   }
 };
 
+// 1️⃣ Legacy Step — Generate Reset Token (for backward compatibility)
+export const requestPasswordResetToken = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Generate a random token for legacy system
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // Save token in DB (delete old one if exists)
+    await ForgotPassword.deleteMany({ userId: user._id });
+    await ForgotPassword.create({
+      userId: user._id,
+      resetToken: resetToken,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 mins
+    });
+
+    // Setup Nodemailer
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    // Send reset link email
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5181'}/reset-password/${resetToken}`;
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Password Reset Request",
+      text: `You requested a password reset. Click the following link to reset your password: ${resetUrl}. This link will expire in 10 minutes.`,
+    });
+
+    res.status(200).json({ 
+      message: "Password reset link sent to your email successfully!",
+      resetToken // Include token for development/testing
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // 2️⃣ Step — Verify OTP and Reset Password
 export const resetPassword = async (req, res) => {
   try {
@@ -79,5 +125,46 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-  
 
+// 3️⃣ Legacy Step — Reset Password with Token (for backward compatibility)
+export const resetPasswordWithToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: "Reset token is required" });
+    }
+
+    if (!password) {
+      return res.status(400).json({ message: "New password is required" });
+    }
+
+    // Find the reset record by token
+    const resetRecord = await ForgotPassword.findOne({
+      resetToken: token,
+      expiresAt: { $gt: Date.now() },
+    });
+
+    if (!resetRecord) {
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    // Find the user
+    const user = await User.findById(resetRecord.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash and update the password
+    user.password = await bcrypt.hash(password, 10);
+    await user.save();
+
+    // Delete the reset record
+    await ForgotPassword.deleteOne({ _id: resetRecord._id });
+
+    res.json({ message: "Password reset successful!" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

@@ -16,7 +16,11 @@ export const addOrder = asyncHandler(async (req, res) => {
     shippingAddress,
     paymentMethod,
     itemsPrice: frontendItemsPrice,
-    totalPrice
+    totalPrice,
+    phoneNumber,
+    buyerEmail,
+    buyerContact,
+    buyerName
   } = req.body;
 
   // Validate order items
@@ -111,7 +115,11 @@ export const addOrder = asyncHandler(async (req, res) => {
       shippingAddress,
       paymentMethod: paymentMethod || "card",
       itemsPrice: calculatedItemsPrice,
-      totalPrice
+      totalPrice,
+      phoneNumber: phoneNumber || buyerContact,
+      buyerEmail: buyerEmail,
+      buyerContact: buyerContact || phoneNumber,
+      buyerName: buyerName
     });
 
     const createdOrder = await order.save();
@@ -187,6 +195,6 @@ export const getMyOrders = asyncHandler(async (req, res) => {
 // @route GET /api/orders
 // @access Private/Admin
 export const getOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({}).populate("user", "id name");
+  const orders = await Order.find({}).populate("user", "id name email contact");
   res.json(orders);
 });

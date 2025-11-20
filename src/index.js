@@ -37,6 +37,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use((req, res, next) => {
   let normalizedUrl = req.url;
   
+  // Skip processing for root path
+  if (req.url === '/') {
+    return next();
+  }
+  
   // Handle double slashes
   if (req.url.includes('//')) {
     normalizedUrl = req.url.replace(/\/+/g, '/');

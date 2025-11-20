@@ -1,32 +1,19 @@
 // src/Routes/forgotPasswordRoutes.js
 import express from "express";
-import { requestPasswordReset, resetPassword } from "../Controllers/forgotPasswordController.js";
+import { requestPasswordReset, requestPasswordResetToken, resetPassword, resetPasswordWithToken } from "../Controllers/forgotPasswordController.js";
 
 const router = express.Router();
 
-// Step 1: Request reset link
+// Step 1: Request OTP (new system)
 router.post("/request", requestPasswordReset);
 
-// Step 2: Reset password
-router.post("/reset/:token", resetPassword);
+// Legacy: Request reset token (old system)
+router.post("/request-token", requestPasswordResetToken);
+
+// Step 2: Reset password with OTP (new system)
+router.post("/reset", resetPassword);
+
+// Legacy: Reset password with token (for backward compatibility)
+router.post("/reset/:token", resetPasswordWithToken);
 
 export default router;
-
-
-// import express from "express";
-// import {
-//   requestPasswordReset,
-//   resetPassword,
-// } from "../Controllers/forgotPasswordController.js";
-
-// const router = express.Router();
-
-// // Send OTP
-// router.post("/send-otp", requestPasswordReset);
-
-// // Verify OTP + Reset Password
-// router.post("/reset", resetPassword);
-
-// export default router;  
-
-

@@ -32,7 +32,33 @@ const supplierSchema = mongoose.Schema(
       type: Number, 
       default: 1, 
       immutable: true 
-    }                                       // Fixed at ₹1 per bottle, cannot be changed
+    },                                       // Fixed at ₹1 per bottle, cannot be changed
+    
+    deliveryStatus: {
+      type: String,
+      enum: ['pending', 'confirmed', 'in_transit', 'delivered', 'cancelled'],
+      default: 'pending'
+    },                                        // Delivery tracking status
+    
+    deliveryDate: {
+      type: Date,
+      default: Date.now
+    },                                        // When delivery was submitted
+    
+    confirmedDate: Date,                     // When admin confirmed delivery
+    deliveredDate: Date,                      // When delivery was completed
+    
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [500, "Notes cannot exceed 500 characters"]
+    },                                        // Additional delivery notes
+    
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    }                                         // Reference to the user who submitted
   },
   { timestamps: true }
 );

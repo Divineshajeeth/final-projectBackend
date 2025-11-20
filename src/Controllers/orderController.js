@@ -83,6 +83,14 @@ export const addOrder = asyncHandler(async (req, res) => {
     throw new Error(`Price mismatch detected - Total: ${totalPrice}, Items: ${calculatedItemsPrice}`);
   }
 
+  // Validate phone number
+  const finalPhoneNumber = phoneNumber || buyerContact;
+  if (!finalPhoneNumber || finalPhoneNumber.trim().length < 10) {
+    console.log("❌ Invalid or missing phone number:", { phoneNumber, buyerContact });
+    res.status(400);
+    throw new Error("Valid phone number is required (minimum 10 digits)");
+  }
+
   // Validate each order item and map to expected format
   const orderItems = cartItems.map(item => {
     const productId = item.product || item.productId;
@@ -104,7 +112,9 @@ export const addOrder = asyncHandler(async (req, res) => {
       product: productId,
       qty: quantity,
       price: price,
-      size: item.size || undefined
+      size: item.size || undefined,
+      image: item.image || undefined, // Store product image if provided
+      productName: item.productName || item.name || undefined // Store product name for fallback
     };
   });
 
@@ -116,9 +126,15 @@ export const addOrder = asyncHandler(async (req, res) => {
       paymentMethod: paymentMethod || "card",
       itemsPrice: calculatedItemsPrice,
       totalPrice,
-      phoneNumber: phoneNumber || buyerContact,
+      phoneNumber: finalPhoneNumber.trim(),
       buyerEmail: buyerEmail,
-      buyerContact: buyerContact || phoneNumber,
+      buyerContact: finalPhoneNumber.trim(),
+      buyerName: buyerName
+    });
+
+    console.log("📞 Contact information stored:", {
+      phoneNumber: finalPhoneNumber.trim(),
+      buyerContact: finalPhoneNumber.trim(),
       buyerName: buyerName
     });
 
@@ -187,14 +203,102 @@ export const updateOrderToPaid = asyncHandler(async (req, res) => {
 // @route GET /api/orders/myorders
 // @access Private
 export const getMyOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ user: req.user._id });
+  const orders = await Order.find({ user: req.user._id })
+    .populate("user", "name email contact")
+    .populate("orderItems.product", "name image");
   res.json(orders);
+});
+
+// @desc Update order status
+// @route PUT /api/orders/:id/status
+// @access Private (owner or admin)
+export const updateOrderStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  
+  if (!status) {
+    res.status(400);
+    throw new Error("Status is required");
+  }
+
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Check if user is owner or admin
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to update this order");
+  }
+
+  order.status = status;
+  
+  // Set timestamps for specific statuses
+  if (status === "paid") {
+    order.isPaid = true;
+    order.paidAt = Date.now();
+  }
+  if (status === "delivered") {
+    order.isDelivered = true;
+    order.deliveredAt = Date.now();
+  }
+
+  const updatedOrder = await order.save();
+  res.json(updatedOrder);
+});
+
+// @desc Delete order
+// @route DELETE /api/orders/:id
+// @access Private (owner or admin)
+export const deleteOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Check if user is owner or admin
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to delete this order");
+  }
+
+  // Restore stock for deleted order
+  for (const item of order.orderItems) {
+    if (item.product) {
+      await Product.findByIdAndUpdate(
+        item.product, 
+        { $inc: { stock: item.qty } },
+        { new: true }
+      );
+    }
+  }
+
+  await order.deleteOne();
+  res.json({ message: "Order deleted successfully" });
 });
 
 // @desc Get all orders (admin)
 // @route GET /api/orders
 // @access Private/Admin
 export const getOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({}).populate("user", "id name email contact");
+  const orders = await Order.find({})
+    .populate("user", "id name email contact")
+    .populate("orderItems.product", "name image");
+  
+  console.log("📋 Admin Orders Debug - Sample order data:");
+  if (orders.length > 0) {
+    const sampleOrder = orders[0];
+    console.log("Order ID:", sampleOrder._id);
+    console.log("Order phoneNumber:", sampleOrder.phoneNumber);
+    console.log("Order buyerContact:", sampleOrder.buyerContact);
+    console.log("Order buyerEmail:", sampleOrder.buyerEmail);
+    console.log("Order buyerName:", sampleOrder.buyerName);
+    console.log("User contact:", sampleOrder.user?.contact);
+    console.log("User name:", sampleOrder.user?.name);
+    console.log("User email:", sampleOrder.user?.email);
+  }
+  
   res.json(orders);
 });

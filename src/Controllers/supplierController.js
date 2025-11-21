@@ -45,8 +45,14 @@ export const getSuppliers = asyncHandler(async (req, res) => {
     throw new Error("Access denied");
   }
 
+  console.log(`📋 Fetching suppliers for user: ${req.user._id}, role: ${req.user.role}`);
+
   // Both admin and suppliers can see all suppliers
-  const suppliers = await Supplier.find({}).sort({ createdAt: -1 });
+  const suppliers = await Supplier.find({})
+    .populate('user', 'name email _id')
+    .sort({ createdAt: -1 });
+
+  console.log(`✅ Found ${suppliers.length} suppliers`);
   
   res.json({
     success: true,

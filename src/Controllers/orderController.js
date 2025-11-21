@@ -303,6 +303,31 @@ export const deleteOrder = asyncHandler(async (req, res) => {
   res.json({ message: "Order deleted successfully" });
 });
 
+// @desc Get orders by specific user ID
+// @route GET /api/orders/user/:userId
+// @access Private (admin or owner)
+export const getOrdersByUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  
+  console.log(`🔍 Fetching orders for user: ${userId}`);
+  console.log(`👤 Requested by user: ${req.user._id} (role: ${req.user.role})`);
+  
+  // Authorization check: users can only see their own orders unless they're admin
+  if (req.user._id.toString() !== userId && req.user.role !== "admin") {
+    console.log("❌ Unauthorized: User trying to access another user's orders");
+    res.status(403);
+    throw new Error("Not authorized to view orders for this user");
+  }
+  
+  const orders = await Order.find({ user: userId })
+    .populate("user", "name email contact")
+    .populate("orderItems.product", "name image");
+  
+  console.log(`📦 Found ${orders.length} orders for user ${userId}`);
+  
+  res.json(orders);
+});
+
 // @desc Get all orders (admin)
 // @route GET /api/orders
 // @access Private/Admin

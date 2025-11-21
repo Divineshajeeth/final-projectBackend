@@ -19,12 +19,32 @@ const orderSchema = mongoose.Schema(
       postalCode: String,
       country: String
     },
-    paymentMethod: { type: String, default: "card" },
+    paymentMethod: { type: String, enum: ["card", "cash"], default: "card" },
+    paymentStatus: { 
+      type: String, 
+      enum: ["pending", "processing", "completed", "failed", "refunded"], 
+      default: "pending" 
+    },
     paymentResult: {
       id: String,
       status: String,
       update_time: String,
-      email_address: String
+      email_address: String,
+      transactionId: String,
+      gateway: String,
+      amount: Number,
+      currency: String
+    },
+    cardDetails: {
+      last4: String,
+      brand: String,
+      expiry: String,
+      cardholderName: String
+    },
+    paymentTimestamps: {
+      initiated: Date,
+      completed: Date,
+      failed: Date
     },
     itemsPrice: { type: Number, required: true },
     shippingPrice: { type: Number, default: 0 },

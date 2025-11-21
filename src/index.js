@@ -71,7 +71,7 @@ if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
 
 app.use(cors({
   // origin: process.env.CORS_ORIGIN || "*",
-  origin: "http://localhost:5182",
+  origin: "http://localhost:5184",
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
@@ -88,8 +88,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/suppliers", supplier)
-app.use("/api/payments/users", userPaymentRoutes);
-app.use("/api/payments/suppliers", supplierPaymentRoutes);
+app.use("/api/userPayments", userPaymentRoutes);
+app.use("/api/userPayments", userPaymentRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/password", forgotPasswordRoutes);
 

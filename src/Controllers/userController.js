@@ -408,7 +408,7 @@ export const getAdminDashboard = asyncHandler(async (req, res) => {
 export const getAllUsers = asyncHandler(async (req, res) => {
   try {
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query.limit) || 1000; // Increased limit to show all users
     const role = req.query.role;
     const search = req.query.search;
 
@@ -433,18 +433,15 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       .limit(limit)
       .skip((page - 1) * limit);
 
-    res.json({
-      success: true,
-      data: {
-        users,
-        pagination: {
-          page,
-          pages: Math.ceil(count / limit),
-          total: count,
-          limit
-        }
-      }
+    console.log("📋 getAllUsers - Found users:", users.length, "Total count:", count);
+    console.log("👤 Users by role:", {
+      buyers: users.filter(u => u.role === 'buyer').length,
+      suppliers: users.filter(u => u.role === 'supplier').length,
+      admins: users.filter(u => u.role === 'admin').length
     });
+
+    // Return users array directly for simpler frontend handling
+    res.json(users);
   } catch (error) {
     console.error("Get all users error:", error);
     res.status(500);

@@ -8,7 +8,7 @@ const userSchema = mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ["buyer", "admin", "supplier"], default: "buyer" },
+    role: { type: String, enum: ["buyer", "admin", "supplier", "saler"], default: "buyer" },
     contact:  String ,
     address:  String ,
     profileImage:String ,
@@ -29,4 +29,3 @@ userSchema.pre("save", async function (next) {
 
 const User = mongoose.model("User", userSchema);
 export default User;
-

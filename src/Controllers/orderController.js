@@ -213,12 +213,36 @@ export const getMyOrders = asyncHandler(async (req, res) => {
 // @route PUT /api/orders/:id/status
 // @access Private (owner or admin)
 export const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
+  console.log("🔄 Updating order status for:", req.params.id);
+  console.log("📤 Request body:", req.body);
   
-  if (!status) {
-    res.status(400);
-    throw new Error("Status is required");
+  // Handle multiple possible ways status might be sent
+  let status = req.body.status;
+  
+  // If status is not in body, try to parse from raw body
+  if (!status && req.rawBody) {
+    try {
+      const rawBody = JSON.parse(req.rawBody.toString());
+      status = rawBody.status;
+      console.log("🔍 Parsed status from raw body:", status);
+    } catch (error) {
+      console.log("❌ Failed to parse raw body:", error.message);
+    }
   }
+  
+  // Final fallback - check if request has any data at all
+  if (!status) {
+    console.log("❌ Validation failed: Status is missing or undefined");
+    console.log("Full request body:", JSON.stringify(req.body, null, 2));
+    console.log("Raw body:", req.rawBody ? req.rawBody.toString() : 'No raw body');
+    console.log("Content-Type:", req.headers['content-type']);
+    console.log("Content-Length:", req.headers['content-length']);
+    
+    res.status(400);
+    throw new Error("Status is required in request body");
+  }
+  
+  console.log("✅ Status validation passed:", status);
 
   const order = await Order.findById(req.params.id);
   if (!order) {

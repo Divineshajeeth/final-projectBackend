@@ -10,9 +10,16 @@ const router = express.Router();
 router.get("/debug/users", async (req, res) => {
   try {
     const users = await User.find().select("email name role createdAt").sort({ createdAt: -1 });
+    const usersByRole = {
+      total: users.length,
+      buyers: users.filter(u => u.role === 'buyer').length,
+      suppliers: users.filter(u => u.role === 'supplier').length,
+      admins: users.filter(u => u.role === 'admin').length
+    };
     res.json({
       success: true,
       count: users.length,
+      usersByRole,
       users: users
     });
   } catch (error) {

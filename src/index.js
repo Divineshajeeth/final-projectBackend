@@ -71,7 +71,7 @@ if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
 
 app.use(cors({
   // origin: process.env.CORS_ORIGIN || "*",
-  origin: "http://localhost:5184",
+  origin: "http://localhost:5185",
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,

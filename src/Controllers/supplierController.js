@@ -38,7 +38,7 @@ export const createSupplier = asyncHandler(async (req, res) => {
   });
 });
 
-// Get Suppliers - Admin gets all, Supplier gets all (for now)
+// Get Suppliers - Admin gets all, Supplier gets only their own deliveries
 export const getSuppliers = asyncHandler(async (req, res) => {
   if (req.user.role !== "admin" && req.user.role !== "supplier") {
     res.status(403);
@@ -47,12 +47,23 @@ export const getSuppliers = asyncHandler(async (req, res) => {
 
   console.log(`📋 Fetching suppliers for user: ${req.user._id}, role: ${req.user.role}`);
 
-  // Both admin and suppliers can see all suppliers
-  const suppliers = await Supplier.find({})
-    .populate('user', 'name email _id')
-    .sort({ createdAt: -1 });
+  let suppliers;
+  
+  if (req.user.role === "supplier") {
+    // Suppliers can only see their own deliveries
+    console.log(`🔒 Supplier access - filtering by user: ${req.user._id}`);
+    suppliers = await Supplier.find({ user: req.user._id })
+      .populate('user', 'name email _id')
+      .sort({ createdAt: -1 });
+  } else {
+    // Admins can see all deliveries
+    console.log(`👑 Admin access - fetching all suppliers`);
+    suppliers = await Supplier.find({})
+      .populate('user', 'name email _id')
+      .sort({ createdAt: -1 });
+  }
 
-  console.log(`✅ Found ${suppliers.length} suppliers`);
+  console.log(`✅ Found ${suppliers.length} suppliers for ${req.user.role}`);
   
   res.json({
     success: true,
@@ -150,6 +161,27 @@ export const updateDeliveryStatus = asyncHandler(async (req, res) => {
     success: true,
     data: updated,
     message: `Delivery status updated to ${status}`
+  });
+});
+
+// Get My Deliveries - For suppliers to get only their own deliveries
+export const getMyDeliveries = asyncHandler(async (req, res) => {
+  if (req.user.role !== "supplier") {
+    res.status(403);
+    throw new Error("Only suppliers can access their deliveries");
+  }
+
+  console.log(`📦 Fetching deliveries for supplier: ${req.user._id}`);
+
+  const suppliers = await Supplier.find({ user: req.user._id })
+    .populate('user', 'name email _id')
+    .sort({ createdAt: -1 });
+
+  console.log(`✅ Found ${suppliers.length} deliveries for supplier ${req.user._id}`);
+  
+  res.json({
+    success: true,
+    data: suppliers
   });
 });
 

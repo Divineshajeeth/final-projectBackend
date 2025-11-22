@@ -3,6 +3,7 @@ import { protect } from "../Middlewares/authMiddleware.js";
 import {
   createSupplier,
   getSuppliers,
+  getMyDeliveries,
   updateSupplier,
   deleteSupplier,
   updateDeliveryStatus,
@@ -16,6 +17,9 @@ router.post("/", protect, createSupplier);
 
 // Get suppliers (admin gets all, supplier gets own data)
 router.get("/", protect, getSuppliers);
+
+// Get my deliveries (supplier only)
+router.get("/my-deliveries", protect, getMyDeliveries);
 
 // Get supplier statistics (admin only)
 router.get("/stats", protect, getSupplierStats);

@@ -110,13 +110,13 @@ export const processPayment = asyncHandler(async (req, res) => {
       
       // Update order for cash payment
       order.paymentMethod = "cash";
-      order.paymentStatus = "pending_collection";
+      order.paymentStatus = "pending";
       order.paymentResult = {
         transactionId: paymentResult.transactionId,
         gateway: "cash",
         amount: paymentResult.amount,
         currency: paymentResult.currency,
-        status: "pending_collection"
+        status: "pending"
       };
       order.paymentTimestamps = {
         initiated: new Date(),

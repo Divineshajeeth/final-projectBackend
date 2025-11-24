@@ -75,7 +75,7 @@ export const processCashPayment = async ({ amount, currency = "inr", description
     transactionId,
     amount,
     currency,
-    status: "pending_collection",
+    status: "pending",
     method: "cash",
     processedAt: new Date().toISOString()
   };

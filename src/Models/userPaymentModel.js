@@ -9,7 +9,7 @@ const userPaymentSchema = mongoose.Schema(
     amount: { type: Number, required: true },
     method: { 
       type: String, 
-      enum: ["card", "cash"],
+      enum: ["stripe", "cash"],
       required: true 
     },
     transactionId: { type: String, unique: true, sparse: true },
@@ -24,7 +24,6 @@ const userPaymentSchema = mongoose.Schema(
       last4: String,
       brand: String,
       expiry: String,
-      cardholderName: String
     },
     gatewayResponse: {
       id: String,

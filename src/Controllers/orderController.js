@@ -1,6 +1,7 @@
 import asyncHandler from "express-async-handler";
 import Order from "../Models/orderModel.js";
 import Product from "../Models/productModel.js";
+import { getOrdersWithPaymentValidation } from "../Utils/paymentValidator.js";
 
 // @desc Create new order
 // @route POST /api/orders
@@ -203,10 +204,27 @@ export const updateOrderToPaid = asyncHandler(async (req, res) => {
 // @route GET /api/orders/myorders
 // @access Private
 export const getMyOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ user: req.user._id })
-    .populate("user", "name email contact")
-    .populate("orderItems.product", "name image");
-  res.json(orders);
+  console.log(`🔍 Fetching orders for user: ${req.user._id} (role: ${req.user.role})`);
+  
+  try {
+    const orders = await getOrdersWithPaymentValidation(
+      { user: req.user._id },
+      { isAdmin: false }
+    );
+    
+    console.log(`📦 Found ${orders.length} valid orders for user ${req.user._id}`);
+    res.json(orders);
+  } catch (error) {
+    console.error("❌ Error fetching user orders with payment validation:", error);
+    
+    // Fallback to original method if validation fails
+    const orders = await Order.find({ user: req.user._id })
+      .populate("user", "name email contact")
+      .populate("orderItems.product", "name image");
+    
+    console.log(`⚠️ Fallback: Found ${orders.length} orders without payment validation`);
+    res.json(orders);
+  }
 });
 
 // @desc Update order status
@@ -319,35 +337,61 @@ export const getOrdersByUser = asyncHandler(async (req, res) => {
     throw new Error("Not authorized to view orders for this user");
   }
   
-  const orders = await Order.find({ user: userId })
-    .populate("user", "name email contact")
-    .populate("orderItems.product", "name image");
-  
-  console.log(`📦 Found ${orders.length} orders for user ${userId}`);
-  
-  res.json(orders);
+  try {
+    const orders = await getOrdersWithPaymentValidation(
+      { user: userId },
+      { isAdmin: req.user.role === "admin" }
+    );
+    
+    console.log(`📦 Found ${orders.length} orders for user ${userId} (with payment validation)`);
+    res.json(orders);
+  } catch (error) {
+    console.error("❌ Error fetching user orders with payment validation:", error);
+    
+    // Fallback to original method if validation fails
+    const orders = await Order.find({ user: userId })
+      .populate("user", "name email contact")
+      .populate("orderItems.product", "name image");
+    
+    console.log(`⚠️ Fallback: Found ${orders.length} orders for user ${userId} without payment validation`);
+    res.json(orders);
+  }
 });
 
 // @desc Get all orders (admin)
 // @route GET /api/orders
 // @access Private/Admin
 export const getOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({})
-    .populate("user", "id name email contact")
-    .populate("orderItems.product", "name image");
-  
-  console.log("📋 Admin Orders Debug - Sample order data:");
-  if (orders.length > 0) {
-    const sampleOrder = orders[0];
-    console.log("Order ID:", sampleOrder._id);
-    console.log("Order phoneNumber:", sampleOrder.phoneNumber);
-    console.log("Order buyerContact:", sampleOrder.buyerContact);
-    console.log("Order buyerEmail:", sampleOrder.buyerEmail);
-    console.log("Order buyerName:", sampleOrder.buyerName);
-    console.log("User contact:", sampleOrder.user?.contact);
-    console.log("User name:", sampleOrder.user?.name);
-    console.log("User email:", sampleOrder.user?.email);
+  try {
+    const orders = await getOrdersWithPaymentValidation(
+      {},
+      { isAdmin: true }
+    );
+    
+    console.log("📋 Admin Orders Debug - Sample order data:");
+    if (orders.length > 0) {
+      const sampleOrder = orders[0];
+      console.log("Order ID:", sampleOrder._id);
+      console.log("Order phoneNumber:", sampleOrder.phoneNumber);
+      console.log("Order buyerContact:", sampleOrder.buyerContact);
+      console.log("Order buyerEmail:", sampleOrder.buyerEmail);
+      console.log("Order buyerName:", sampleOrder.buyerName);
+      console.log("User contact:", sampleOrder.user?.contact);
+      console.log("User name:", sampleOrder.user?.name);
+      console.log("User email:", sampleOrder.user?.email);
+      console.log("Payment validation:", sampleOrder.paymentValidation);
+    }
+    
+    res.json(orders);
+  } catch (error) {
+    console.error("❌ Error fetching admin orders with payment validation:", error);
+    
+    // Fallback to original method if validation fails
+    const orders = await Order.find({})
+      .populate("user", "id name email contact")
+      .populate("orderItems.product", "name image");
+    
+    console.log("⚠️ Fallback: Found", orders.length, "orders without payment validation");
+    res.json(orders);
   }
-  
-  res.json(orders);
 });

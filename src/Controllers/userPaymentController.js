@@ -1,26 +1,23 @@
-
 import asyncHandler from "express-async-handler";
 import UserPayment from "../Models/userPaymentModel.js";
 import Order from "../Models/orderModel.js";
-import { processCardPayment, processCashPayment } from "../Utils/paymentGatway.js";
+import { createPaymentIntent, confirmPaymentIntent, processCashPayment as processCashPaymentUtil, getPaymentMethod, verifyWebhookSignature } from "../Utils/paymentGatway.js";
 
-// Process payment with card
-export const processPayment = asyncHandler(async (req, res) => {
-  console.log("💳 Processing payment request:", JSON.stringify(req.body, null, 2));
+// Process cash payment (for cash on delivery)
+export const processCashPayment = asyncHandler(async (req, res) => {
+  console.log("💵 Processing cash payment request:", JSON.stringify(req.body, null, 2));
   
   const { 
     orderId, 
-    paymentMethod, 
-    cardDetails, 
     amount, 
     currency = "inr",
     description 
   } = req.body;
 
   // Validate required fields
-  if (!orderId || !paymentMethod || !amount) {
+  if (!orderId || !amount) {
     res.status(400);
-    throw new Error("Order ID, payment method, and amount are required");
+    throw new Error("Order ID and amount are required");
   }
 
   // Get order details
@@ -42,132 +39,65 @@ export const processPayment = asyncHandler(async (req, res) => {
     throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
   }
 
-  let paymentResult;
-  let paymentStatus = "pending";
-
   try {
-    if (paymentMethod === "card") {
-      if (!cardDetails) {
-        res.status(400);
-        throw new Error("Card details are required for card payment");
-      }
+    // Process cash payment
+    const paymentResult = await processCashPaymentUtil({
+      amount,
+      currency,
+      description: description || `Cash payment for order ${orderId}`
+    });
 
-      // Process card payment
-      paymentResult = await processCardPayment({
-        cardDetails,
-        amount,
-        currency,
-        description: description || `Payment for order ${orderId}`
-      });
+    // Update order for cash payment
+    order.paymentMethod = "cash";
+    order.paymentStatus = "pending";
+    order.paymentResult = {
+      transactionId: paymentResult.transactionId,
+      gateway: "cash",
+      amount: paymentResult.amount,
+      currency: paymentResult.currency,
+      status: "pending"
+    };
+    order.paymentTimestamps = {
+      initiated: new Date(),
+      completed: new Date()
+    };
+    order.status = "confirmed"; // Cash orders are confirmed but pending payment
 
-      if (paymentResult.success) {
-        paymentStatus = "completed";
-        
-        // Update order with payment details
-        order.paymentMethod = "card";
-        order.paymentStatus = "completed";
-        order.paymentResult = {
-          id: paymentResult.paymentIntentId,
-          status: paymentResult.status,
-          transactionId: paymentResult.transactionId,
-          gateway: "mock",
-          amount: paymentResult.amount,
-          currency: paymentResult.currency
-        };
-        order.cardDetails = {
-          last4: paymentResult.cardDetails.last4,
-          brand: paymentResult.cardDetails.brand,
-          expiry: paymentResult.cardDetails.expiry,
-          cardholderName: paymentResult.cardDetails.cardholderName
-        };
-        order.paymentTimestamps = {
-          initiated: new Date(),
-          completed: new Date()
-        };
-        order.isPaid = true;
-        order.paidAt = new Date();
-        order.status = "paid";
-
-        await order.save();
-      } else {
-        paymentStatus = "failed";
-        order.paymentStatus = "failed";
-        order.paymentTimestamps = {
-          initiated: new Date(),
-          failed: new Date()
-        };
-        await order.save();
-      }
-    } else if (paymentMethod === "cash") {
-      // Process cash payment
-      paymentResult = await processCashPayment({
-        amount,
-        currency,
-        description: description || `Cash payment for order ${orderId}`
-      });
-
-      paymentStatus = "completed"; // Cash payments are considered confirmed when order is placed
-      
-      // Update order for cash payment
-      order.paymentMethod = "cash";
-      order.paymentStatus = "pending";
-      order.paymentResult = {
-        transactionId: paymentResult.transactionId,
-        gateway: "cash",
-        amount: paymentResult.amount,
-        currency: paymentResult.currency,
-        status: "pending"
-      };
-      order.paymentTimestamps = {
-        initiated: new Date(),
-        completed: new Date()
-      };
-      order.status = "confirmed"; // Cash orders are confirmed but pending payment
-
-      await order.save();
-    }
+    await order.save();
 
     // Create payment record
     const payment = await UserPayment.create({
       user: order.user,
       order: orderId,
       amount,
-      method: paymentMethod,
+      method: "cash",
       transactionId: paymentResult.transactionId,
-      status: paymentStatus,
-      gateway: paymentResult.gateway || "mock",
+      status: "pending",
+      gateway: "cash",
       currency,
-      cardDetails: paymentResult.cardDetails || undefined,
-      gatewayResponse: paymentResult.success ? {
-        id: paymentResult.paymentIntentId,
+      gatewayResponse: {
+        id: paymentResult.transactionId,
         status: paymentResult.status,
         transactionId: paymentResult.transactionId
-      } : {
-        failure_code: paymentResult.code,
-        failure_message: paymentResult.error
       },
-      failureReason: paymentResult.success ? undefined : paymentResult.error,
-      processedAt: paymentResult.success ? new Date(paymentResult.processedAt) : undefined
+      processedAt: new Date(paymentResult.processedAt)
     });
 
-    console.log("✅ Payment processed successfully:", {
+    console.log("✅ Cash payment processed successfully:", {
       paymentId: payment._id,
       orderId,
-      status: paymentStatus,
       transactionId: paymentResult.transactionId
     });
 
     res.status(201).json({
-      success: paymentResult.success,
+      success: true,
       payment,
       order,
-      message: paymentResult.success 
-        ? "Payment processed successfully" 
-        : `Payment failed: ${paymentResult.error}`
+      message: "Cash payment processed successfully"
     });
 
   } catch (error) {
-    console.error("❌ Payment processing error:", error);
+    console.error("❌ Cash payment processing error:", error);
     
     // Update order status to failed
     if (order) {
@@ -180,113 +110,774 @@ export const processPayment = asyncHandler(async (req, res) => {
     }
 
     res.status(500);
-    throw new Error(`Payment processing failed: ${error.message}`);
+    throw new Error(`Cash payment processing failed: ${error.message}`);
   }
 });
 
-// Get payment details for an order
+// Create Stripe Payment Intent
+export const createStripePaymentIntent = asyncHandler(async (req, res) => {
+  console.log("💳 Creating Stripe Payment Intent:", JSON.stringify(req.body, null, 2));
+  console.log("🔑 Stripe keys check:", {
+    hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
+    secretKeyPrefix: process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.substring(0, 10) + '...' : 'none'
+  });
+  
+  const { orderId, amount, currency = "inr", description } = req.body;
+
+  // Validate required fields
+  if (!orderId || !amount) {
+    console.log("❌ Validation failed - Missing required fields:", { orderId, amount });
+    res.status(400);
+    throw new Error("Order ID and amount are required");
+  }
+
+  // Validate amount is a positive number
+  if (typeof amount !== 'number' || amount <= 0) {
+    console.log("❌ Validation failed - Invalid amount:", amount);
+    res.status(400);
+    throw new Error("Amount must be a positive number");
+  }
+
+  // Get order details
+  const order = await Order.findById(orderId);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Verify user authorization
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to create payment intent for this order");
+  }
+
+  // Verify amount matches order total
+  if (Math.abs(amount - order.totalPrice) > 0.01) {
+    res.status(400);
+    throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
+  }
+
+  try {
+    // Create payment intent with Stripe
+    const paymentIntentResult = await createPaymentIntent({
+      amount,
+      currency,
+      description: description || `Payment for order ${orderId}`,
+      metadata: {
+        orderId: orderId.toString(),
+        userId: req.user._id.toString()
+      }
+    });
+
+    if (!paymentIntentResult.success) {
+      res.status(400);
+      throw new Error(`Failed to create payment intent: ${paymentIntentResult.error}`);
+    }
+
+    // Update order with payment intent ID
+    order.paymentResult = {
+      id: paymentIntentResult.id,
+      status: paymentIntentResult.status,
+      gateway: "stripe",
+      amount: paymentIntentResult.amount,
+      currency: paymentIntentResult.currency
+    };
+    order.paymentTimestamps = {
+      initiated: new Date()
+    };
+    await order.save();
+
+    console.log("✅ Payment Intent created successfully:", {
+      paymentIntentId: paymentIntentResult.id,
+      orderId,
+      amount: paymentIntentResult.amount
+    });
+
+    res.json({
+      success: true,
+      clientSecret: paymentIntentResult.clientSecret,
+      paymentIntentId: paymentIntentResult.id,
+      amount: paymentIntentResult.amount,
+      currency: paymentIntentResult.currency
+    });
+
+  } catch (error) {
+    console.error("❌ Payment Intent creation error:", error);
+    res.status(500);
+    throw new Error(`Payment Intent creation failed: ${error.message}`);
+  }
+});
+
+// Confirm Stripe Payment
+export const confirmStripePayment = asyncHandler(async (req, res) => {
+  console.log("💳 Confirming Stripe Payment:", JSON.stringify(req.body, null, 2));
+  console.log("👤 Authenticated user:", { 
+    userId: req.user._id, 
+    userEmail: req.user.email, 
+    userRole: req.user.role 
+  });
+  
+  const { paymentIntentId, orderId } = req.body;
+
+  // Validate required fields
+  if (!paymentIntentId || !orderId) {
+    console.log("❌ Validation failed - Missing required fields:", { paymentIntentId, orderId });
+    return res.status(400).json({
+      success: false,
+      message: "Payment Intent ID and Order ID are required",
+      received: { paymentIntentId, orderId }
+    });
+  }
+
+  // Validate ObjectId format
+  if (!orderId.match(/^[0-9a-fA-F]{24}$/)) {
+    console.log("❌ Validation failed - Invalid Order ID format:", orderId);
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Order ID format"
+    });
+  }
+
+  try {
+    // Get order details with user population
+    const order = await Order.findById(orderId).populate("user", "name email");
+    if (!order) {
+      console.log("❌ Validation failed - Order not found:", orderId);
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+        orderId: orderId
+      });
+    }
+
+    console.log("📦 Order details:", {
+      orderId: order._id,
+      orderUser: order.user?._id,
+      orderUserEmail: order.user?.email,
+      orderStatus: order.status,
+      orderTotalPrice: order.totalPrice
+    });
+
+    // Verify user authorization - handle case where order.user might be a string
+    const orderUserId = order.user?._id?.toString() || order.user?.toString();
+    if (!orderUserId || (orderUserId !== req.user._id.toString() && req.user.role !== "admin")) {
+      console.log("❌ Authorization failed:", {
+        orderUser: orderUserId,
+        requestUser: req.user._id,
+        userRole: req.user.role
+      });
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to confirm payment for this order"
+      });
+    }
+
+    console.log("✅ Authorization passed");
+
+    // Retrieve payment intent details from Stripe (not confirm, since client already confirmed)
+    const paymentResult = await confirmPaymentIntent(paymentIntentId);
+
+    if (!paymentResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: paymentResult.error || `Failed to retrieve payment: ${paymentResult.error}`
+      });
+    }
+
+    const paymentIntent = paymentResult.paymentIntent;
+
+    // Check if payment intent is too old (older than 1 hour)
+    const createdTime = new Date(paymentIntent.created * 1000);
+    const currentTime = new Date();
+    const hoursDiff = (currentTime - createdTime) / (1000 * 60 * 60);
+    
+    if (hoursDiff > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment session has expired. Please try again."
+      });
+    }
+
+    // Check if payment is already processed for this order
+    const existingPayment = await UserPayment.findOne({ 
+      order: orderId, 
+      transactionId: paymentIntentId 
+    });
+    
+    if (existingPayment && existingPayment.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: "Payment has already been processed for this order."
+      });
+    }
+    let paymentStatus = "pending";
+
+    // Update order based on payment status
+    if (paymentIntent.status === "succeeded") {
+      paymentStatus = "completed";
+      order.isPaid = true;
+      order.paidAt = new Date();
+      order.status = "paid";
+    } else if (paymentIntent.status === "requires_payment_method") {
+      paymentStatus = "pending";
+    } else if (paymentIntent.status === "canceled") {
+      paymentStatus = "failed";
+    } else if (paymentIntent.status === "processing") {
+      paymentStatus = "processing";
+    }
+
+    // Get payment method details if available
+    let cardDetails = null;
+    if (paymentIntent.payment_method) {
+      const paymentMethodResult = await getPaymentMethod(paymentIntent.payment_method);
+      if (paymentMethodResult.success && paymentMethodResult.paymentMethod.card) {
+        const card = paymentMethodResult.paymentMethod.card;
+        cardDetails = {
+          last4: card.last4,
+          brand: card.brand,
+          expiry: `${card.expiry_month.toString().padStart(2, '0')}/${card.expiry_year.toString().slice(-2)}`
+        };
+      }
+    }
+
+    // Update order with payment details
+    order.paymentMethod = "stripe";
+    order.paymentStatus = paymentStatus;
+    order.paymentResult = {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      transactionId: paymentIntent.id,
+      gateway: "stripe",
+      amount: paymentResult.amount,
+      currency: paymentResult.currency
+    };
+    order.cardDetails = cardDetails;
+    order.paymentTimestamps = {
+      ...order.paymentTimestamps,
+      completed: paymentStatus === "completed" ? new Date() : undefined
+    };
+
+    await order.save();
+
+    // Create payment record
+    const payment = await UserPayment.create({
+      user: order.user,
+      order: orderId,
+      amount: paymentResult.amount,
+      method: "stripe",
+      transactionId: paymentIntent.id,
+      status: paymentStatus,
+      gateway: "stripe",
+      currency: paymentResult.currency,
+      cardDetails,
+      gatewayResponse: {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency
+      },
+      processedAt: paymentStatus === "completed" ? new Date() : undefined
+    });
+
+    console.log("✅ Payment confirmed successfully:", {
+      paymentId: payment._id,
+      orderId,
+      status: paymentStatus,
+      paymentIntentId
+    });
+
+    res.json({
+      success: true,
+      payment,
+      order,
+      paymentStatus,
+      message: paymentStatus === "completed" 
+        ? "Payment confirmed successfully" 
+        : `Payment status: ${paymentStatus}`
+    });
+
+  } catch (error) {
+    console.error("❌ Payment confirmation error:", error);
+    
+    // Try to get order for error handling
+    try {
+      const order = await Order.findById(orderId);
+      if (order) {
+        order.paymentStatus = "failed";
+        order.paymentTimestamps = {
+          ...order.paymentTimestamps,
+          failed: new Date()
+        };
+        await order.save();
+      }
+    } catch (orderError) {
+      console.error("❌ Failed to update order status:", orderError);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: `Payment confirmation failed: ${error.message}`
+    });
+  }
+});
+
+// Stripe Webhook Handler
+export const stripeWebhook = asyncHandler(async (req, res) => {
+  console.log("🪝 Processing Stripe webhook");
+  
+  try {
+    const event = verifyWebhookSignature(req);
+    
+    if (!event) {
+      console.error("❌ Webhook signature verification failed");
+      return res.status(400).json({ error: "Webhook signature verification failed" });
+    }
+
+    console.log(`📦 Processing webhook event: ${event.type}`);
+
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        await handlePaymentSucceeded(event.data.object);
+        break;
+      
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailed(event.data.object);
+        break;
+      
+      case 'payment_intent.canceled':
+        await handlePaymentCanceled(event.data.object);
+        break;
+      
+      case 'payment_intent.requires_action':
+        await handlePaymentRequiresAction(event.data.object);
+        break;
+      
+      default:
+        console.log(`🔍 Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+
+  } catch (error) {
+    console.error("❌ Webhook processing error:", error);
+    res.status(500).json({ error: "Webhook processing failed" });
+  }
+});
+
+// Webhook event handlers
+async function handlePaymentSucceeded(paymentIntent) {
+  console.log("✅ Payment succeeded:", paymentIntent.id);
+  
+  try {
+    const orderId = paymentIntent.metadata.orderId;
+    if (!orderId) return;
+
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    // Update order status
+    order.paymentStatus = "completed";
+    order.isPaid = true;
+    order.paidAt = new Date();
+    order.status = "paid";
+    order.paymentResult = {
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      transactionId: paymentIntent.id,
+      gateway: "stripe",
+      amount: paymentIntent.amount / 100,
+      currency: paymentIntent.currency
+    };
+    order.paymentTimestamps = {
+      ...order.paymentTimestamps,
+      completed: new Date()
+    };
+
+    await order.save();
+
+    // Update or create payment record
+    await UserPayment.findOneAndUpdate(
+      { transactionId: paymentIntent.id },
+      {
+        status: "completed",
+        gatewayResponse: {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+          amount: paymentIntent.amount / 100,
+          currency: paymentIntent.currency
+        },
+        processedAt: new Date()
+      },
+      { upsert: true }
+    );
+
+    console.log("✅ Order updated for successful payment:", orderId);
+  } catch (error) {
+    console.error("❌ Error handling payment succeeded:", error);
+  }
+}
+
+async function handlePaymentFailed(paymentIntent) {
+  console.log("❌ Payment failed:", paymentIntent.id);
+  
+  try {
+    const orderId = paymentIntent.metadata.orderId;
+    if (!orderId) return;
+
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    // Update order status
+    order.paymentStatus = "failed";
+    order.paymentTimestamps = {
+      ...order.paymentTimestamps,
+      failed: new Date()
+    };
+
+    await order.save();
+
+    // Update payment record
+    await UserPayment.findOneAndUpdate(
+      { transactionId: paymentIntent.id },
+      {
+        status: "failed",
+        failureReason: paymentIntent.last_payment_error?.message || "Payment failed",
+        gatewayResponse: {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+          last_payment_error: paymentIntent.last_payment_error
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log("❌ Order updated for failed payment:", orderId);
+  } catch (error) {
+    console.error("❌ Error handling payment failed:", error);
+  }
+}
+
+async function handlePaymentCanceled(paymentIntent) {
+  console.log("🚫 Payment canceled:", paymentIntent.id);
+  
+  try {
+    const orderId = paymentIntent.metadata.orderId;
+    if (!orderId) return;
+
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    // Update order status
+    order.paymentStatus = "canceled";
+    order.paymentTimestamps = {
+      ...order.paymentTimestamps,
+      canceled: new Date()
+    };
+
+    await order.save();
+
+    // Update payment record
+    await UserPayment.findOneAndUpdate(
+      { transactionId: paymentIntent.id },
+      {
+        status: "canceled",
+        gatewayResponse: {
+          id: paymentIntent.id,
+          status: paymentIntent.status
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log("🚫 Order updated for canceled payment:", orderId);
+  } catch (error) {
+    console.error("❌ Error handling payment canceled:", error);
+  }
+}
+
+async function handlePaymentRequiresAction(paymentIntent) {
+  console.log("⏳ Payment requires action:", paymentIntent.id);
+  
+  try {
+    const orderId = paymentIntent.metadata.orderId;
+    if (!orderId) return;
+
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    // Update order status
+    order.paymentStatus = "requires_action";
+
+    await order.save();
+
+    // Update payment record
+    await UserPayment.findOneAndUpdate(
+      { transactionId: paymentIntent.id },
+      {
+        status: "requires_action",
+        gatewayResponse: {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+          next_action: paymentIntent.next_action
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log("⏳ Order updated for payment requiring action:", orderId);
+  } catch (error) {
+    console.error("❌ Error handling payment requires action:", error);
+  }
+}
+
+// Create User Payment (legacy endpoint)
+export const createUserPayment = asyncHandler(async (req, res) => {
+  console.log("💳 Creating user payment record (legacy):", JSON.stringify(req.body, null, 2));
+  
+  const { 
+    orderId, 
+    amount, 
+    method = "cash",
+    transactionId,
+    status = "pending",
+    gateway = "manual",
+    currency = "inr"
+  } = req.body;
+
+  // Validate required fields
+  if (!orderId || !amount) {
+    res.status(400);
+    throw new Error("Order ID and amount are required");
+  }
+
+  // Get order details
+  const order = await Order.findById(orderId);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Verify user authorization
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to create payment for this order");
+  }
+
+  // Create payment record
+  const payment = await UserPayment.create({
+    user: order.user,
+    order: orderId,
+    amount,
+    method,
+    transactionId: transactionId || `manual_${Date.now()}`,
+    status,
+    gateway,
+    currency,
+    processedAt: status === "completed" ? new Date() : undefined
+  });
+
+  // Update order with payment info
+  order.paymentMethod = method;
+  order.paymentStatus = status;
+  order.paymentResult = {
+    transactionId: payment.transactionId,
+    gateway: gateway,
+    amount: amount,
+    currency: currency,
+    status: status
+  };
+  order.paymentTimestamps = {
+    initiated: new Date(),
+    completed: status === "completed" ? new Date() : undefined
+  };
+
+  if (status === "completed") {
+    order.isPaid = true;
+    order.paidAt = new Date();
+    order.status = "paid";
+  }
+
+  await order.save();
+
+  console.log("✅ User payment record created:", {
+    paymentId: payment._id,
+    orderId,
+    method,
+    status
+  });
+
+  res.status(201).json({
+    success: true,
+    payment,
+    order,
+    message: "Payment record created successfully"
+  });
+});
+
+// Get payment details for a specific order
 export const getOrderPayment = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
-  
+
+  // Validate ObjectId format
+  if (!orderId.match(/^[0-9a-fA-F]{24}$/)) {
+    res.status(400);
+    throw new Error("Invalid Order ID format");
+  }
+
+  // Get order details
+  const order = await Order.findById(orderId);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Verify user authorization
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to view payment for this order");
+  }
+
+  // Get payment details
   const payment = await UserPayment.findOne({ order: orderId })
-    .populate("order")
-    .populate("user", "name email");
+    .populate("user", "name email")
+    .populate("order", "orderItems totalPrice shippingPrice taxPrice status");
 
   if (!payment) {
     res.status(404);
-    throw new Error("Payment not found for this order");
+    throw new Error("Payment record not found for this order");
   }
 
-  // Check authorization
-  if (payment.user._id.toString() !== req.user._id.toString() && req.user.role !== "admin") {
-    res.status(403);
-    throw new Error("Not authorized to view this payment");
-  }
-
-  res.json(payment);
+  res.json({
+    success: true,
+    payment,
+    order
+  });
 });
 
 // Get all payments for a user
 export const getUserPayments = asyncHandler(async (req, res) => {
-  const userId = req.params.userId || req.user._id;
+  const { userId } = req.params;
   
-  // Authorization check
-  if (userId !== req.user._id.toString() && req.user.role !== "admin") {
-    res.status(403);
-    throw new Error("Not authorized to view payments for this user");
+  // If userId is provided in params, verify authorization
+  if (userId) {
+    // Validate ObjectId format
+    if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+      res.status(400);
+      throw new Error("Invalid User ID format");
+    }
+
+    // Verify user authorization (admin can view any user's payments, users can only view their own)
+    if (userId !== req.user._id.toString() && req.user.role !== "admin") {
+      res.status(403);
+      throw new Error("Not authorized to view payments for this user");
+    }
   }
 
-  const payments = await UserPayment.find({ user: userId })
-    .populate("order")
+  // Get payments for the user (either from params or current user)
+  const targetUserId = userId || req.user._id;
+  
+  const payments = await UserPayment.find({ user: targetUserId })
+    .populate("user", "name email")
+    .populate("order", "orderItems totalPrice shippingPrice taxPrice status createdAt")
     .sort({ createdAt: -1 });
 
-  res.json(payments);
+  res.json({
+    success: true,
+    payments,
+    count: payments.length
+  });
 });
 
 // Get all payments (admin only)
 export const getAllPayments = asyncHandler(async (req, res) => {
-  if (req.user.role !== "admin") {
-    res.status(403);
-    throw new Error("Admin access required");
-  }
+  const { page = 1, limit = 10, status, method } = req.query;
+  
+  // Build query
+  const query = {};
+  if (status) query.status = status;
+  if (method) query.method = method;
 
-  const payments = await UserPayment.find({})
-    .populate("order")
+  // Get payments with pagination
+  const payments = await UserPayment.find(query)
     .populate("user", "name email")
-    .sort({ createdAt: -1 });
+    .populate("order", "orderItems totalPrice shippingPrice taxPrice status createdAt")
+    .sort({ createdAt: -1 })
+    .limit(limit * 1)
+    .skip((page - 1) * limit);
 
-  res.json(payments);
+  // Get total count
+  const total = await UserPayment.countDocuments(query);
+
+  res.json({
+    success: true,
+    payments,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    }
+  });
 });
 
 // Update payment status (admin only)
 export const updatePaymentStatus = asyncHandler(async (req, res) => {
-  if (req.user.role !== "admin") {
-    res.status(403);
-    throw new Error("Admin access required");
-  }
-
   const { paymentId } = req.params;
-  const { status, notes } = req.body;
+  const { status, failureReason } = req.body;
 
-  const payment = await UserPayment.findById(paymentId);
-  if (!payment) {
-    res.status(404);
-    throw new Error("Payment not found");
+  // Validate ObjectId format
+  if (!paymentId.match(/^[0-9a-fA-F]{24}$/)) {
+    res.status(400);
+    throw new Error("Invalid Payment ID format");
   }
 
-  const validStatuses = ["pending", "processing", "completed", "failed", "refunded"];
+  // Validate status
+  const validStatuses = ["pending", "completed", "failed", "canceled", "requires_action"];
   if (!validStatuses.includes(status)) {
     res.status(400);
     throw new Error(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
   }
 
+  // Get payment details
+  const payment = await UserPayment.findById(paymentId).populate("order");
+  if (!payment) {
+    res.status(404);
+    throw new Error("Payment not found");
+  }
+
+  // Update payment status
   payment.status = status;
+  if (failureReason) payment.failureReason = failureReason;
   
   if (status === "completed") {
     payment.processedAt = new Date();
-  } else if (status === "refunded") {
-    payment.refundedAt = new Date();
   }
 
   await payment.save();
 
-  // Update corresponding order
-  const order = await Order.findById(payment.order);
-  if (order) {
-    order.paymentStatus = status;
-    if (status === "completed") {
-      order.isPaid = true;
-      order.paidAt = new Date();
-      order.status = "paid";
-    }
+  // Update corresponding order if payment is completed
+  if (payment.order && status === "completed") {
+    const order = payment.order;
+    order.paymentStatus = "completed";
+    order.isPaid = true;
+    order.paidAt = new Date();
+    order.status = "paid";
+    order.paymentTimestamps = {
+      ...order.paymentTimestamps,
+      completed: new Date()
+    };
     await order.save();
   }
 
+  console.log("✅ Payment status updated:", {
+    paymentId,
+    oldStatus: payment.status,
+    newStatus: status
+  });
+
   res.json({
-    message: "Payment status updated successfully",
-    payment
+    success: true,
+    payment,
+    message: `Payment status updated to ${status}`
   });
 });
-
-// Legacy function for backward compatibility
-export const createUserPayment = processPayment;

@@ -8,7 +8,12 @@ import {
   createUserPayment,
   createStripePaymentIntent,
   confirmStripePayment,
-  stripeWebhook
+  stripeWebhook,
+  createStripeCustomer,
+  getSavedPaymentMethods,
+  savePaymentMethod,
+  removePaymentMethod,
+  createStripeCheckoutSession
 } from "../Controllers/userPaymentController.js";
 import { protect, admin } from "../Middlewares/authMiddleware.js";
 
@@ -44,5 +49,21 @@ router.post("/stripe/confirm", protect, confirmStripePayment);
 
 // Stripe Webhook (no auth required - Stripe authenticates via signature)
 router.post("/stripe/webhook", stripeWebhook);
+
+// Stripe Customer Management Routes
+// Create Stripe Customer
+router.post("/stripe/create-customer", protect, createStripeCustomer);
+
+// Get saved payment methods
+router.get("/stripe/payment-methods", protect, getSavedPaymentMethods);
+
+// Save payment method
+router.post("/stripe/save-payment-method", protect, savePaymentMethod);
+
+// Remove payment method
+router.delete("/stripe/payment-methods/:paymentMethodId", protect, removePaymentMethod);
+
+// Stripe Checkout Session
+router.post("/stripe/create-checkout-session", protect, createStripeCheckoutSession);
 
 export default router;

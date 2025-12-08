@@ -1,7 +1,18 @@
 import asyncHandler from "express-async-handler";
 import UserPayment from "../Models/userPaymentModel.js";
 import Order from "../Models/orderModel.js";
-import { createPaymentIntent, confirmPaymentIntent, processCashPayment as processCashPaymentUtil, getPaymentMethod, verifyWebhookSignature } from "../Utils/paymentGatway.js";
+import { 
+  createPaymentIntent, 
+  confirmPaymentIntent, 
+  processCashPayment as processCashPaymentUtil, 
+  getPaymentMethod, 
+  verifyWebhookSignature,
+  createCustomer,
+  getCustomerPaymentMethods,
+  attachPaymentMethodToCustomer,
+  createPaymentIntentWithCustomer,
+  createCheckoutSession
+} from "../Utils/paymentGatway.js";
 
 // Process cash payment (for cash on delivery)
 export const processCashPayment = asyncHandler(async (req, res) => {
@@ -341,7 +352,7 @@ export const confirmStripePayment = asyncHandler(async (req, res) => {
     }
 
     // Update order with payment details
-    order.paymentMethod = "stripe";
+    order.paymentMethod = "card";
     order.paymentStatus = paymentStatus;
     order.paymentResult = {
       id: paymentIntent.id,
@@ -477,6 +488,7 @@ async function handlePaymentSucceeded(paymentIntent) {
 
     // Update order status
     order.paymentStatus = "completed";
+    order.paymentMethod = "card";
     order.isPaid = true;
     order.paidAt = new Date();
     order.status = "paid";
@@ -880,4 +892,266 @@ export const updatePaymentStatus = asyncHandler(async (req, res) => {
     payment,
     message: `Payment status updated to ${status}`
   });
+});
+
+// Create Stripe Customer
+export const createStripeCustomer = asyncHandler(async (req, res) => {
+  console.log("👤 Creating Stripe customer:", JSON.stringify(req.body, null, 2));
+  
+  const { email, name } = req.body;
+
+  // Validate required fields
+  if (!email || !name) {
+    res.status(400);
+    throw new Error("Email and name are required");
+  }
+
+  try {
+    const customerResult = await createCustomer({
+      email,
+      name,
+      metadata: {
+        userId: req.user._id.toString()
+      }
+    });
+
+    if (!customerResult.success) {
+      res.status(400);
+      throw new Error(`Failed to create customer: ${customerResult.error}`);
+    }
+
+    console.log("✅ Stripe customer created:", customerResult.customer.id);
+
+    res.json({
+      success: true,
+      customer: customerResult.customer,
+      message: "Stripe customer created successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Customer creation error:", error);
+    res.status(500);
+    throw new Error(`Customer creation failed: ${error.message}`);
+  }
+});
+
+// Get saved payment methods for customer
+export const getSavedPaymentMethods = asyncHandler(async (req, res) => {
+  console.log("💳 Getting saved payment methods for user:", req.user._id);
+  
+  try {
+    // Get user's Stripe customer ID from user model or create one
+    let customerId = req.user.stripeCustomerId;
+    
+    if (!customerId) {
+      // Create a Stripe customer for the user
+      const customerResult = await createCustomer({
+        email: req.user.email,
+        name: req.user.name,
+        metadata: {
+          userId: req.user._id.toString()
+        }
+      });
+
+      if (!customerResult.success) {
+        res.status(400);
+        throw new Error(`Failed to create customer: ${customerResult.error}`);
+      }
+
+      customerId = customerResult.customer.id;
+      
+      // Update user with Stripe customer ID
+      req.user.stripeCustomerId = customerId;
+      await req.user.save();
+    }
+
+    const paymentMethodsResult = await getCustomerPaymentMethods(customerId);
+
+    if (!paymentMethodsResult.success) {
+      res.status(400);
+      throw new Error(`Failed to get payment methods: ${paymentMethodsResult.error}`);
+    }
+
+    console.log("✅ Retrieved payment methods:", paymentMethodsResult.paymentMethods.length);
+
+    res.json({
+      success: true,
+      paymentMethods: paymentMethodsResult.paymentMethods,
+      customerId
+    });
+
+  } catch (error) {
+    console.error("❌ Payment methods retrieval error:", error);
+    res.status(500);
+    throw new Error(`Payment methods retrieval failed: ${error.message}`);
+  }
+});
+
+// Save payment method to customer
+export const savePaymentMethod = asyncHandler(async (req, res) => {
+  console.log("💾 Saving payment method:", JSON.stringify(req.body, null, 2));
+  
+  const { paymentMethodId } = req.body;
+
+  if (!paymentMethodId) {
+    res.status(400);
+    throw new Error("Payment Method ID is required");
+  }
+
+  try {
+    // Get user's Stripe customer ID
+    let customerId = req.user.stripeCustomerId;
+    
+    if (!customerId) {
+      // Create a Stripe customer for the user
+      const customerResult = await createCustomer({
+        email: req.user.email,
+        name: req.user.name,
+        metadata: {
+          userId: req.user._id.toString()
+        }
+      });
+
+      if (!customerResult.success) {
+        res.status(400);
+        throw new Error(`Failed to create customer: ${customerResult.error}`);
+      }
+
+      customerId = customerResult.customer.id;
+      
+      // Update user with Stripe customer ID
+      req.user.stripeCustomerId = customerId;
+      await req.user.save();
+    }
+
+    const attachResult = await attachPaymentMethodToCustomer(paymentMethodId, customerId);
+
+    if (!attachResult.success) {
+      res.status(400);
+      throw new Error(`Failed to save payment method: ${attachResult.error}`);
+    }
+
+    console.log("✅ Payment method saved:", attachResult.paymentMethod.id);
+
+    res.json({
+      success: true,
+      paymentMethod: attachResult.paymentMethod,
+      message: "Payment method saved successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Payment method save error:", error);
+    res.status(500);
+    throw new Error(`Payment method save failed: ${error.message}`);
+  }
+});
+
+// Remove saved payment method
+export const removePaymentMethod = asyncHandler(async (req, res) => {
+  const { paymentMethodId } = req.params;
+
+  if (!paymentMethodId) {
+    res.status(400);
+    throw new Error("Payment Method ID is required");
+  }
+
+  try {
+    const stripe = getStripeInstance();
+    
+    // Detach payment method from customer
+    await stripe.paymentMethods.detach(paymentMethodId);
+
+    console.log("✅ Payment method removed:", paymentMethodId);
+
+    res.json({
+      success: true,
+      message: "Payment method removed successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Payment method removal error:", error);
+    res.status(500);
+    throw new Error(`Payment method removal failed: ${error.message}`);
+  }
+});
+
+// Create Stripe Checkout Session
+export const createStripeCheckoutSession = asyncHandler(async (req, res) => {
+  console.log("🛒 Creating Stripe Checkout Session:", JSON.stringify(req.body, null, 2));
+  
+  const { orderId, amount, currency = "inr", successUrl, cancelUrl } = req.body;
+
+  // Validate required fields
+  if (!orderId || !amount) {
+    res.status(400);
+    throw new Error("Order ID and amount are required");
+  }
+
+  // Get order details
+  const order = await Order.findById(orderId);
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found");
+  }
+
+  // Verify user authorization
+  if (order.user.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Not authorized to create checkout session for this order");
+  }
+
+  // Verify amount matches order total
+  if (Math.abs(amount - order.totalPrice) > 0.01) {
+    res.status(400);
+    throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
+  }
+
+  try {
+    // Get user's Stripe customer ID if available
+    let customerId = req.user.stripeCustomerId;
+
+    const sessionResult = await createCheckoutSession({
+      amount,
+      currency,
+      customerId,
+      successUrl,
+      cancelUrl,
+      metadata: {
+        orderId: orderId.toString(),
+        userId: req.user._id.toString()
+      }
+    });
+
+    if (!sessionResult.success) {
+      res.status(400);
+      throw new Error(`Failed to create checkout session: ${sessionResult.error}`);
+    }
+
+    // Update order with session info
+    order.paymentResult = {
+      sessionId: sessionResult.sessionId,
+      status: "pending",
+      gateway: "stripe_checkout",
+      amount: amount,
+      currency: currency
+    };
+    order.paymentTimestamps = {
+      initiated: new Date()
+    };
+    await order.save();
+
+    console.log("✅ Checkout session created:", sessionResult.sessionId);
+
+    res.json({
+      success: true,
+      sessionId: sessionResult.sessionId,
+      url: sessionResult.url,
+      message: "Checkout session created successfully"
+    });
+
+  } catch (error) {
+    console.error("❌ Checkout session creation error:", error);
+    res.status(500);
+    throw new Error(`Checkout session creation failed: ${error.message}`);
+  }
 });

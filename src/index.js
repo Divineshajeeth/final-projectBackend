@@ -89,7 +89,6 @@ app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/suppliers", supplier)
 app.use("/api/userPayments", userPaymentRoutes);
-app.use("/api/userPayments", userPaymentRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/password", forgotPasswordRoutes);
 

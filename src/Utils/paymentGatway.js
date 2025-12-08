@@ -11,7 +11,10 @@ const getStripeInstance = () => {
       throw new Error('STRIPE_SECRET_KEY environment variable is not set. Please check your .env file.');
     }
     
-    stripeInstance = new Stripe(secretKey);
+    stripeInstance = new Stripe(secretKey, {
+      apiVersion: '2024-11-20.acacia',
+      typescript: true,
+    });
   }
   
   return stripeInstance;
@@ -190,6 +193,215 @@ export const getPaymentMethod = async (paymentMethodId) => {
       success: false,
       error: error.message,
       code: error.code || 'payment_method_retrieval_failed'
+    };
+  }
+};
+
+// Create a Stripe Customer
+export const createCustomer = async ({ email, name, metadata = {} }) => {
+  try {
+    const stripe = getStripeInstance();
+    
+    const customer = await stripe.customers.create({
+      email,
+      name,
+      metadata,
+    });
+
+    return {
+      success: true,
+      customer: {
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+      }
+    };
+  } catch (error) {
+    console.error('Customer creation error:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || 'customer_creation_failed'
+    };
+  }
+};
+
+// Get customer's saved payment methods
+export const getCustomerPaymentMethods = async (customerId) => {
+  try {
+    const stripe = getStripeInstance();
+    
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: 'card',
+    });
+
+    return {
+      success: true,
+      paymentMethods: paymentMethods.data.map(pm => ({
+        id: pm.id,
+        type: pm.type,
+        card: pm.card ? {
+          brand: pm.card.brand,
+          last4: pm.card.last4,
+          expiry_month: pm.card.exp_month,
+          expiry_year: pm.card.exp_year,
+          fingerprint: pm.card.fingerprint,
+        } : null,
+        created: pm.created,
+      }))
+    };
+  } catch (error) {
+    console.error('Payment methods retrieval error:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || 'payment_methods_retrieval_failed'
+    };
+  }
+};
+
+// Attach payment method to customer
+export const attachPaymentMethodToCustomer = async (paymentMethodId, customerId) => {
+  try {
+    const stripe = getStripeInstance();
+    
+    const paymentMethod = await stripe.paymentMethods.attach(
+      paymentMethodId,
+      { customer: customerId }
+    );
+
+    return {
+      success: true,
+      paymentMethod: {
+        id: paymentMethod.id,
+        type: paymentMethod.type,
+        card: paymentMethod.card ? {
+          brand: paymentMethod.card.brand,
+          last4: paymentMethod.card.last4,
+          expiry_month: paymentMethod.card.exp_month,
+          expiry_year: paymentMethod.card.exp_year,
+        } : null,
+      }
+    };
+  } catch (error) {
+    console.error('Payment method attachment error:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || 'payment_method_attachment_failed'
+    };
+  }
+};
+
+// Create Payment Intent with customer and saved payment method
+export const createPaymentIntentWithCustomer = async ({ 
+  amount, 
+  currency = "inr", 
+  customerId, 
+  paymentMethodId,
+  description = "", 
+  metadata = {} 
+}) => {
+  try {
+    const stripe = getStripeInstance();
+    
+    const amountInCents = Math.round(amount * 100);
+    
+    const paymentIntentParams = {
+      amount: amountInCents,
+      currency,
+      description,
+      metadata: {
+        ...metadata,
+        integration_check: 'accept_a_payment'
+      },
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    };
+
+    // Add customer if provided
+    if (customerId) {
+      paymentIntentParams.customer = customerId;
+    }
+
+    // Add payment method if provided
+    if (paymentMethodId) {
+      paymentIntentParams.payment_method = paymentMethodId;
+      paymentIntentParams.confirm = true;
+      paymentIntentParams.off_session = true;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+
+    return {
+      success: true,
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret,
+      amount: amountInCents / 100,
+      currency: paymentIntent.currency,
+      status: paymentIntent.status,
+      created: paymentIntent.created,
+      nextAction: paymentIntent.next_action
+    };
+  } catch (error) {
+    console.error('Stripe Payment Intent creation error:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || 'payment_intent_failed'
+    };
+  }
+};
+
+// Create Stripe Checkout Session
+export const createCheckoutSession = async ({ 
+  amount, 
+  currency = "inr", 
+  customerId,
+  successUrl,
+  cancelUrl,
+  metadata = {} 
+}) => {
+  try {
+    const stripe = getStripeInstance();
+    
+    const sessionParams = {
+      payment_method_types: ['card'],
+      mode: 'payment',
+      line_items: [{
+        price_data: {
+          currency,
+          product_data: {
+            name: metadata.description || 'Order Payment',
+          },
+          unit_amount: Math.round(amount * 100),
+        },
+        quantity: 1,
+      }],
+      success_url: successUrl || `${process.env.CORS_ORIGIN}/payment/success`,
+      cancel_url: cancelUrl || `${process.env.CORS_ORIGIN}/payment/canceled`,
+      metadata,
+    };
+
+    if (customerId) {
+      sessionParams.customer = customerId;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    return {
+      success: true,
+      sessionId: session.id,
+      url: session.url,
+    };
+  } catch (error) {
+    console.error('Stripe Checkout Session creation error:', error);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code || 'checkout_session_failed'
     };
   }
 };

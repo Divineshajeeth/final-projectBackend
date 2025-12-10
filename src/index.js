@@ -11,10 +11,10 @@ import userRoutes from "./Routes/userRoutes.js";
 import productRoutes from "./Routes/productRoutes.js";
 import orderRoutes from "./Routes/orderRoutes.js";
 import userPaymentRoutes from "./Routes/userPaymentRoutes.js";
-// import supplierPaymentRoutes from "./Routes/supplierPaymentRoutes.js";
+import supplierPaymentRoutes from "./Routes/supplierPaymentRoutes.js";
 import feedbackRoutes from "./Routes/feedbackRoutes.js";
 import forgotPasswordRoutes from "./Routes/forgotPasswordRoutes.js";
-import supplier from "./Routes/supplierRoutes.js";
+import supplierRoutes from "./Routes/supplierRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -87,7 +87,8 @@ app.use(cors({
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
-app.use("/api/suppliers", supplier)
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/supplierPayments", supplierPaymentRoutes);
 app.use("/api/userPayments", userPaymentRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/password", forgotPasswordRoutes);

@@ -21,7 +21,7 @@ const getStripeInstance = () => {
 };
 
 // Create a Payment Intent for secure payment processing
-export const createPaymentIntent = async ({ amount, currency = "inr", description = "", metadata = {} }) => {
+export const createPaymentIntent = async ({ amount, currency = "lkr", description = "", metadata = {} }) => {
   try {
     const stripe = getStripeInstance();
     
@@ -295,10 +295,10 @@ export const attachPaymentMethodToCustomer = async (paymentMethodId, customerId)
 };
 
 // Create Payment Intent with customer and saved payment method
-export const createPaymentIntentWithCustomer = async ({ 
-  amount, 
-  currency = "inr", 
-  customerId, 
+export const createPaymentIntentWithCustomer = async ({
+  amount,
+  currency = "lkr",
+  customerId,
   paymentMethodId,
   description = "", 
   metadata = {} 
@@ -356,9 +356,9 @@ export const createPaymentIntentWithCustomer = async ({
 };
 
 // Create Stripe Checkout Session
-export const createCheckoutSession = async ({ 
-  amount, 
-  currency = "inr", 
+export const createCheckoutSession = async ({
+  amount,
+  currency = "lkr",
   customerId,
   successUrl,
   cancelUrl,
@@ -407,7 +407,7 @@ export const createCheckoutSession = async ({
 };
 
 // Cash payment function (kept for cash on delivery option)
-export const processCashPayment = async ({ amount, currency = "inr", description = "" }) => {
+export const processCashPayment = async ({ amount, currency = "lkr", description = "" }) => {
   // Cash payments remain the same (handled locally)
   const transactionId = "cash_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
   

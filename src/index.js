@@ -1,5 +1,5 @@
 import express from "express";
-import mongoose from "mongoose";
+// import mongoose from "mongoose";
 import dotenv from "dotenv";
 import morgan from "morgan";
 import cors from "cors";
@@ -11,7 +11,7 @@ import userRoutes from "./Routes/userRoutes.js";
 import productRoutes from "./Routes/productRoutes.js";
 import orderRoutes from "./Routes/orderRoutes.js";
 import userPaymentRoutes from "./Routes/userPaymentRoutes.js";
-import supplierPaymentRoutes from "./Routes/supplierPaymentRoutes.js";
+// import supplierPaymentRoutes from "./Routes/supplierPaymentRoutes.js";
 import feedbackRoutes from "./Routes/feedbackRoutes.js";
 import forgotPasswordRoutes from "./Routes/forgotPasswordRoutes.js";
 import supplier from "./Routes/supplierRoutes.js";
@@ -71,7 +71,7 @@ if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
 
 app.use(cors({
   // origin: process.env.CORS_ORIGIN || "*",
-  origin: ["http://localhost:5187", "http://localhost:5188"],
+  origin: ["http://localhost:5189", "http://localhost:5190"],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,

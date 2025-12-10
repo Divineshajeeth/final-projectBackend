@@ -6,6 +6,7 @@ const supplierPaymentSchema = mongoose.Schema(
   {
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: "supplier", required: true },
     amount: { type: Number, required: true },
+    currency: { type: String, default: "LKR", enum: ["LKR", "USD", "EUR", "INR"] },
     method: { type: String },
     transactionId: { type: String },
     status: { type: String, default: "pending" },

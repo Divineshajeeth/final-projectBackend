@@ -21,7 +21,7 @@ export const processCashPayment = asyncHandler(async (req, res) => {
   const { 
     orderId, 
     amount, 
-    currency = "inr",
+    currency = "lkr",
     description 
   } = req.body;
 
@@ -47,7 +47,7 @@ export const processCashPayment = asyncHandler(async (req, res) => {
   // Verify amount matches order total
   if (Math.abs(amount - order.totalPrice) > 0.01) {
     res.status(400);
-    throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
+    throw new Error(`Amount mismatch. Order total: Rs.${order.totalPrice}, Payment amount: Rs.${amount}`);
   }
 
   try {
@@ -133,7 +133,7 @@ export const createStripePaymentIntent = asyncHandler(async (req, res) => {
     secretKeyPrefix: process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.substring(0, 10) + '...' : 'none'
   });
   
-  const { orderId, amount, currency = "inr", description } = req.body;
+  const { orderId, amount, currency = "lkr", description } = req.body;
 
   // Validate required fields
   if (!orderId || !amount) {
@@ -165,7 +165,7 @@ export const createStripePaymentIntent = asyncHandler(async (req, res) => {
   // Verify amount matches order total
   if (Math.abs(amount - order.totalPrice) > 0.01) {
     res.status(400);
-    throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
+    throw new Error(`Amount mismatch. Order total: Rs.${order.totalPrice}, Payment amount: Rs.${amount}`);
   }
 
   try {
@@ -653,7 +653,7 @@ export const createUserPayment = asyncHandler(async (req, res) => {
     transactionId,
     status = "pending",
     gateway = "manual",
-    currency = "inr"
+    currency = "lkr"
   } = req.body;
 
   // Validate required fields
@@ -1079,7 +1079,7 @@ export const removePaymentMethod = asyncHandler(async (req, res) => {
 export const createStripeCheckoutSession = asyncHandler(async (req, res) => {
   console.log("🛒 Creating Stripe Checkout Session:", JSON.stringify(req.body, null, 2));
   
-  const { orderId, amount, currency = "inr", successUrl, cancelUrl } = req.body;
+  const { orderId, amount, currency = "lkr", successUrl, cancelUrl } = req.body;
 
   // Validate required fields
   if (!orderId || !amount) {
@@ -1103,7 +1103,7 @@ export const createStripeCheckoutSession = asyncHandler(async (req, res) => {
   // Verify amount matches order total
   if (Math.abs(amount - order.totalPrice) > 0.01) {
     res.status(400);
-    throw new Error(`Amount mismatch. Order total: ₹${order.totalPrice}, Payment amount: ₹${amount}`);
+    throw new Error(`Amount mismatch. Order total: Rs.${order.totalPrice}, Payment amount: Rs.${amount}`);
   }
 
   try {

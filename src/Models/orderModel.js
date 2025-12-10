@@ -33,7 +33,7 @@ const orderSchema = mongoose.Schema(
       transactionId: String,
       gateway: String,
       amount: Number,
-      currency: String
+      currency: { type: String, default: "LKR" }
     },
     cardDetails: {
       last4: String,

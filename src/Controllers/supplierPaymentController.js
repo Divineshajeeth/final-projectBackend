@@ -3,10 +3,11 @@ import SupplierPayment from "../Models/supplierPaymentModel.js";
 
 // create supplier payment
 export const createSupplierPayment = asyncHandler(async (req, res) => {
-  const { supplierId, amount, method, transactionId, notes } = req.body;
+  const { supplierId, amount, currency = "LKR", method, transactionId, notes } = req.body;
   const payment = await SupplierPayment.create({
     supplier: supplierId,
     amount,
+    currency,
     method,
     transactionId,
     notes,

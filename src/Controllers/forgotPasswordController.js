@@ -78,7 +78,7 @@ export const requestPasswordResetToken = async (req, res) => {
     });
 
     // Send reset link email
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5190'}/reset-password/${resetToken}`;
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5191'}/reset-password/${resetToken}`;
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,

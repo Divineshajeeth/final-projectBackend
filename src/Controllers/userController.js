@@ -19,41 +19,63 @@ export const registerUser = asyncHandler(async (req, res) => {
   console.log("Extracted fields - name:", name, "email:", email, "password:", password ? "***" : "undefined", "role:", role);
 
   // Enhanced input validation with specific error messages
+  const validationErrors = {};
   const missingFields = [];
-  if (!name) missingFields.push("name");
-  if (!email) missingFields.push("email");
-  if (!password) missingFields.push("password");
+
+  if (!name || name.trim() === '') {
+    missingFields.push("name");
+    validationErrors.name = "Name is required";
+  }
+  if (!email || email.trim() === '') {
+    missingFields.push("email");
+    validationErrors.email = "Email is required";
+  }
+  if (!password || password.trim() === '') {
+    missingFields.push("password");
+    validationErrors.password = "Password is required";
+  }
 
   if (missingFields.length > 0) {
     console.log("Missing fields:", missingFields);
     res.status(400);
-    throw new Error(`Please provide all required fields. Missing: ${missingFields.join(", ")}`);
+    const error = new Error(`Please provide all required fields. Missing: ${missingFields.join(", ")}`);
+    error.validationErrors = validationErrors;
+    error.missingFields = missingFields;
+    throw error;
   }
 
   // Email format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     res.status(400);
-    throw new Error("Please provide a valid email address");
+    const error = new Error("Please provide a valid email address");
+    error.validationErrors = { email: "Please enter a valid email address" };
+    throw error;
   }
 
   // Password validation
   if (password.length < 6) {
     res.status(400);
-    throw new Error("Password must be at least 6 characters long");
+    const error = new Error("Password must be at least 6 characters long");
+    error.validationErrors = { password: "Password must be at least 6 characters long" };
+    throw error;
   }
 
   // Name validation
   if (name.trim().length < 2) {
     res.status(400);
-    throw new Error("Name must be at least 2 characters long");
+    const error = new Error("Name must be at least 2 characters long");
+    error.validationErrors = { name: "Name must be at least 2 characters long" };
+    throw error;
   }
 
   // Role validation
   const validRoles = ["buyer", "admin", "supplier"];
   if (role && !validRoles.includes(role)) {
     res.status(400);
-    throw new Error("Invalid role. Must be: buyer, admin, or supplier");
+    const error = new Error("Invalid role. Must be: buyer, admin, or supplier");
+    error.validationErrors = { role: "Invalid role selected" };
+    throw error;
   }
 
   console.log("Attempting to register user:", { name, email, role });
@@ -62,7 +84,9 @@ export const registerUser = asyncHandler(async (req, res) => {
   const userExists = await User.findOne({ email });
   if (userExists) {
     res.status(400);
-    throw new Error("User with this email already exists");
+    const error = new Error("User with this email already exists");
+    error.validationErrors = { email: "This email is already registered" };
+    throw error;
   }
 
 

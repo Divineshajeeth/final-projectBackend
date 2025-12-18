@@ -504,6 +504,70 @@ export const deleteUser = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Update user profile
+// @route   PUT /api/users/:id
+// @access  Private
+export const updateUserProfile = asyncHandler(async (req, res) => {
+  try {
+    const { name, email, contact, profileImage } = req.body;
+    
+    // Find user
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    // Check if user is updating their own profile
+    if (user._id.toString() !== req.user._id.toString()) {
+      res.status(403);
+      throw new Error("You can only update your own profile");
+    }
+
+    // Validate email if provided and different from current
+    if (email && email !== user.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        res.status(400);
+        throw new Error("Please provide a valid email address");
+      }
+
+      // Check if email is already taken by another user
+      const emailExists = await User.findOne({ email: email.toLowerCase().trim() });
+      if (emailExists) {
+        res.status(400);
+        throw new Error("This email is already registered");
+      }
+      user.email = email.toLowerCase().trim();
+    }
+
+    // Update other fields if provided
+    if (name) user.name = name.trim();
+    if (contact !== undefined) user.contact = contact;
+    if (profileImage !== undefined) user.profileImage = profileImage;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        contact: user.contact,
+        profileImage: user.profileImage
+      }
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500);
+    throw new Error("Failed to update profile: " + error.message);
+  }
+});
+
 // @desc    Update user role
 // @route   PUT /api/users/admin/users/:id/role
 // @access  Private/Admin

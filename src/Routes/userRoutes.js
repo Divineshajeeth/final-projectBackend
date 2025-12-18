@@ -1,5 +1,5 @@
 import express from "express";
-import { registerUser, registerSupplier, authUser, getUserProfile, getAdminDashboard, getAllUsers, deleteUser, updateUserRole } from "../Controllers/userController.js";
+import { registerUser, registerSupplier, authUser, getUserProfile, getAdminDashboard, getAllUsers, deleteUser, updateUserRole, updateUserProfile } from "../Controllers/userController.js";
 import { protect, admin } from "../Middlewares/authMiddleware.js";
 import { validateUserRegistration, validateRequestBody } from "../Middlewares/requestValidationMiddleware.js";
 import User from "../Models/userModel.js";
@@ -38,6 +38,7 @@ router.post("/login", validateRequestBody, authUser);
 
 // Protected routes
 router.get("/profile", protect, getUserProfile);
+router.put("/:id", protect, updateUserProfile);
 
 // Admin only routes
 router.get("/admin/dashboard", protect, admin, getAdminDashboard);
